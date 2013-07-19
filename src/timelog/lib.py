@@ -1,6 +1,7 @@
 import fileinput
 from re import compile
 from django.conf import settings
+from django.utils import translation
 
 from texttable import Texttable
 from progressbar import ProgressBar, Percentage, Bar
@@ -27,19 +28,24 @@ def count_lines_in(filename):
     
     return lines
 
-def view_name_from(path):
+def view_name_from(path, locales):
     "Resolve a path to the full python module name of the related view function"
     try:
         return CACHED_VIEWS[path]
         
     except KeyError:
-        view = resolve(path)
+        spl = path.split('/', 2)
+        if len(spl) == 3 and spl[1] in locales:
+            with translation.override(spl[1], deactivate=True):
+                view = resolve(path)
+        else:
+            view = resolve(path)
         module = path
         name = ''
         if hasattr(view.func, '__module__'):
-            module = resolve(path).func.__module__
+            module = view.func.__module__
         if hasattr(view.func, '__name__'):
-            name = resolve(path).func.__name__
+            name = view.func.__name__
         
         view =  "%s.%s" % (module, name)
         CACHED_VIEWS[path] = view
@@ -69,13 +75,19 @@ def generate_table_from(data):
 
     return table.draw()
 
-def analyze_log_file(logfile, pattern, reverse_paths=True, progress=True):
+def analyze_log_file(logfile, pattern, reverse_paths=True, progress=False):
     "Given a log file and regex group and extract the performance data"
     if progress:
         lines = count_lines_in(logfile)
         pbar = ProgressBar(widgets=[Percentage(), Bar()], maxval=lines+1).start()
         counter = 0
-    
+
+    locales = set()
+    if settings.LANGUAGE_CODE:
+        locales.add(settings.LANGUAGE_CODE)
+    if settings.LANGUAGES:
+        locales.update(dict(settings.LANGUAGES).keys())
+
     data = {}
     
     compiled_pattern = compile(pattern)
@@ -101,7 +113,7 @@ def analyze_log_file(logfile, pattern, reverse_paths=True, progress=True):
                     ignore = True
             if not ignore:
                 if reverse_paths:
-                    view = view_name_from(path)
+                    view = view_name_from(path, locales)
                 else:
                     view = path
                 key = "%s-%s-%s" % (view, status, method)

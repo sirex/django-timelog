@@ -20,7 +20,10 @@ class TimeLogMiddleware(object):
         sqltime = 0.0
 
         for q in connection.queries:
-            sqltime += float(getattr(q, 'time', 0.0))
+            if isinstance(q, dict):
+                sqltime += float(q.get('time', 0.0))
+            else:
+                sqltime += float(getattr(q, 'time', 0.0))
 
         if hasattr(request, '_start'):
             d = {
